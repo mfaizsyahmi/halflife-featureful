@@ -31,6 +31,7 @@
 #include "player.h"
 #include "weapons.h"
 #include "game.h"
+#include "locus.h"
 
 class CRuleEntity : public CBaseEntity
 {
@@ -762,7 +763,12 @@ void CGameCounterSet::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TY
 	if( !CanFireForActivator( pActivator ) )
 		return;
 
-	SUB_UseTargets( pActivator, USE_SET, pev->frags );
+	//  mfs: hijack netname to store string to hold LR reference
+	float fSetValue;
+	if (TryCalcLocus_Ratio(pActivator, STRING( pev->netname ), fSetValue))
+		SUB_UseTargets( pActivator, USE_SET, fSetValue );
+	else
+		SUB_UseTargets( pActivator, USE_SET, pev->frags );
 
 	if( RemoveOnFire() )
 	{
