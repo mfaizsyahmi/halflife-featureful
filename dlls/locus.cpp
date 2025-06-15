@@ -11,6 +11,7 @@
 #include "locus.h"
 #include "effects.h"
 #include "decals.h"
+// #include <tuple>
 
 bool IsLikelyNumber(const char* szText)
 {
@@ -1592,4 +1593,98 @@ bool CCalcEvalNumber::ReportVector(CBaseEntity *pLocus, Vector &result)
 	default:
 		return false;
 	}
+}
+
+/*
+Random number generator
+- Random number between 2 LRs
+- Random position between 2 LPs (collinear or in bbox)
+- Random Velocity (unit vector) between 0 and LR angle (conical)
+*/
+class CCalcRandom : public CPointEntity
+{
+public:
+	bool CalcRatio( CBaseEntity *pLocus, float *outResult );
+	bool CalcPosition( CBaseEntity *pLocus, Vector *outVector );
+	bool CalcVelocity( CBaseEntity* pLocus, Vector *outResult );
+};
+
+LINK_ENTITY_TO_CLASS( calc_random, CCalcRandom )
+
+bool CCalcRandom :: CalcRatio( CBaseEntity *pLocus, float* outResult )
+{
+	float r1 = 0.0f, r2 = 1.0f;
+	TryCalcLocus_Ratio( pLocus, STRING(pev->netname), r1);
+	TryCalcLocus_Ratio( pLocus, STRING(pev->message), r2);
+	if (r1 > r2)
+		std::swap( r1, r2 );
+	*outResult = RANDOM_FLOAT( r1, r2 );
+	return true;
+}
+
+bool CCalcRandom :: CalcPosition( CBaseEntity *pLocus, Vector* outResult )
+{
+	Vector p1 = g_vecZero;
+	Vector p2 = g_vecZero;
+	Vector vecResult = g_vecZero;
+	Vector vecDelta;
+	Vector vecDir;
+	float fDist;
+	
+	TryCalcLocus_Position(this, pLocus, STRING(pev->noise), p1);
+	TryCalcLocus_Position(this, pLocus, STRING(pev->noise1), p2);
+	
+	switch (pev->impulse)
+	{
+	case 1: // along line between 2 points
+		vecDelta = p2 - p1;
+		vecDir = vecDelta.Normalize();
+		fDist = vecDelta.Length();
+		
+		vecResult = p1 + vecDir * RANDOM_FLOAT( 0.0f, fDist );
+		break;
+		
+	default: // bbox
+		// normalize 
+		Vector vecMin = Vector(
+			(p1.x >= p2.x) ? p2.x : p1.x,
+			(p1.y >= p2.y) ? p2.y : p1.y,
+			(p1.z >= p2.z) ? p2.z : p1.z
+		);
+		Vector vecMax = Vector(
+			(p1.x < p2.x) ? p2.x : p1.x,
+			(p1.y < p2.y) ? p2.y : p1.y,
+			(p1.z < p2.z) ? p2.z : p1.z
+		);
+		vecResult.x = RANDOM_FLOAT( vecMin.x, vecMax.x );
+		vecResult.y = RANDOM_FLOAT( vecMin.y, vecMax.y );
+		vecResult.z = RANDOM_FLOAT( vecMin.z, vecMax.z );
+		break;
+	}
+	
+	*outResult = vecResult;
+	return true;
+}
+
+// based off of https://stackoverflow.com/a/5408843
+bool CCalcRandom :: CalcVelocity(CBaseEntity *pLocus, Vector* outResult) {
+	float fRatio = 1.0f, fCosTheta;
+	Vector vecAngles = g_vecZero; // = pev->angles;
+	
+	TryCalcLocus_Ratio( pLocus, STRING(pev->noise2), fRatio);
+	// normalize and clamp to (0...1)
+	if (fRatio < 0.0f)
+		fRatio = -fRatio;
+	if (fRatio > 1.0f)
+		fRatio = 1.0f;
+	
+	// theta == angle from pole (forward) == pitch == y
+	// phi == roll == x
+	vecAngles.x += RANDOM_FLOAT(0 , 2*M_PI);
+	fCosTheta = RANDOM_FLOAT(-fRatio, fRatio);
+	vecAngles.y += std::acos( fCosTheta );
+	
+	UTIL_MakeVectors( vecAngles );
+	*outResult = (gpGlobals->v_forward);
+	return true;
 }
