@@ -1783,6 +1783,13 @@ void CRotButton::Spawn( void )
 // collision problems with them...
 #define SF_MOMENTARY_DOOR		0x0001
 
+typedef enum
+{
+	UPDATE_END = 0,
+	UPDATE_START,
+	UPDATE_SET
+} UPDATE_TYPE;
+
 class CMomentaryRotButton : public CBaseToggle
 {
 public:
@@ -1795,15 +1802,17 @@ public:
 			return flags;
 		return flags | FCAP_CONTINUOUS_USE;
 	}
+	void CMomentaryRotButton::InitThink( void );
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 	void EXPORT Off( void );
 	void EXPORT Return( void );
 	void UpdateSelf( float value );
 	void UpdateSelfReturn( float value );
-	void UpdateAllButtons( float value, int start );
+	void UpdateAllButtons( float value, UPDATE_TYPE start);
 
 	void PlaySound( void );
 	void UpdateTarget( float value );
+	bool CalcRatio(CBaseEntity *pLocus, float *outResult);
 
 	static CMomentaryRotButton *Instance( edict_t *pent ) { return (CMomentaryRotButton *)GET_PRIVATE( pent ); };
 	virtual int Save( CSave &save );
@@ -1839,6 +1848,9 @@ void CMomentaryRotButton::Spawn( void )
 	if( pev->speed == 0.0f )
 		pev->speed = 100.0f;
 
+	// mfaizsyahmi: this is horribly bugged
+	// after several uses the button with negative distance effectively becomes a normal one
+	// probably should use SF_DOOR_ROTATE_BACKWARDS (and add to FGD)
 	if( m_flMoveDistance < 0.0f ) 
 	{
 		m_start = pev->angles + pev->movedir * m_flMoveDistance;
@@ -1861,6 +1873,12 @@ void CMomentaryRotButton::Spawn( void )
 	pev->movetype = MOVETYPE_PUSH;
 	UTIL_SetOrigin( pev, pev->origin );
 	SET_MODEL( ENT( pev ), STRING( pev->model ) );
+	
+	if (pev->frags > 0.0f)
+	{
+		pev->nextthink = gpGlobals->time + 0.1f;
+		SetThink( &CMomentaryRotButton::InitThink );
+	}
 
 	const char *pszSound = ButtonSound( m_sounds );
 	PRECACHE_SOUND( pszSound );
@@ -1880,6 +1898,11 @@ void CMomentaryRotButton::KeyValue( KeyValueData *pkvd )
 		m_sounds = atoi( pkvd->szValue );
 		pkvd->fHandled = true;
 	}
+	else if( FStrEq( pkvd->szKeyName, "initfraction" ) )
+	{
+		pev->frags = atof( pkvd->szValue );
+		pkvd->fHandled = true;
+	}
 	else
 		CBaseToggle::KeyValue( pkvd );
 }
@@ -1889,6 +1912,20 @@ void CMomentaryRotButton::PlaySound( void )
 	EMIT_SOUND( ENT( pev ), CHAN_VOICE, STRING( pev->noise ), 1, ATTN_NORM );
 }
 
+void CMomentaryRotButton::InitThink( void ) {
+	this->Use(this, this, USE_SET, pev->frags);
+	
+	pev->nextthink = -1.0f;
+	SetThink( NULL );
+}
+
+// ratio == position between start and end (0f-1f)
+bool CMomentaryRotButton::CalcRatio( CBaseEntity *pLocus, float* outResult )
+{
+	*outResult = CBaseToggle::AxisDelta( pev->spawnflags, pev->angles, m_start ) / m_flMoveDistance;
+	return true;
+}
+
 // BUGBUG: This design causes a latentcy.  When the button is retriggered, the first impulse
 // will send the target in the wrong direction because the parameter is calculated based on the
 // current, not future position.
@@ -1896,18 +1933,53 @@ void CMomentaryRotButton::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 {
 	if (IsLockedByMaster())
 		return;
+	
+	// exclude players because they always send SET value of 1
+	if ( useType == USE_SET && !pCaller->IsPlayer() )
+	{
+		if( value > 1.0f )
+			value = 1.0f;
+		if( value < 0.0f )
+			value = 0.0f;
+		
+		CBaseToggle::AxisDir( pev );
+		pev->angles = m_start + pev->movedir * m_flMoveDistance * value;
+		
+		// propagate to door
+		UpdateTarget( value );
+		
+		// propagate to linked buttons UNLESS pCaller is another m_r_b 
+		// (meaning it's being propagated)
+		if ( !FClassnameIs( pCaller->pev, "momentary_rot_button" ) )
+		{
+			m_hActivator = pActivator;
+			pev->ideal_yaw = CBaseToggle::AxisDelta( pev->spawnflags, pev->angles, m_start ) / m_flMoveDistance;
 
-	pev->ideal_yaw = CBaseToggle::AxisDelta( pev->spawnflags, pev->angles, m_start ) / m_flMoveDistance;
+			UpdateAllButtons( pev->ideal_yaw, UPDATE_SET);
+		}
+		
+		// for auto-returning buttons, this makes them return afterwards
+		pev->nextthink += 0.1f;
+		SetThink( &CMomentaryRotButton::Off );
+	}
+	
+	else
+	{
+		pev->ideal_yaw = CBaseToggle::AxisDelta( pev->spawnflags, pev->angles, m_start ) / m_flMoveDistance;
 
-	UpdateAllButtons( pev->ideal_yaw, 1 );
+		UpdateAllButtons( pev->ideal_yaw, UPDATE_START );
 
-	// Calculate destination angle and use it to predict value, this prevents sending target in wrong direction on retriggering
-	Vector dest = pev->angles + pev->avelocity * ( pev->nextthink - pev->ltime );
-	float value1 = CBaseToggle::AxisDelta( pev->spawnflags, dest, m_start ) / m_flMoveDistance;
-	UpdateTarget( value1 );
+		// Calculate destination angle and use it to predict value, this prevents sending target in wrong direction on retriggering
+		Vector dest = pev->angles + pev->avelocity * ( pev->nextthink - pev->ltime );
+		float value1 = CBaseToggle::AxisDelta( pev->spawnflags, dest, m_start ) / m_flMoveDistance;
+		UpdateTarget( value1 );
+		
+	}
+
 }
 
-void CMomentaryRotButton::UpdateAllButtons( float value, int start )
+
+void CMomentaryRotButton::UpdateAllButtons( float value, UPDATE_TYPE start)
 {
 	// Update all rot buttons attached to the same target
 	edict_t *pentTarget = NULL;
@@ -1922,7 +1994,9 @@ void CMomentaryRotButton::UpdateAllButtons( float value, int start )
 			CMomentaryRotButton *pEntity = CMomentaryRotButton::Instance( pentTarget );
 			if( pEntity )
 			{
-				if( start )
+				if ( UPDATE_SET == start)
+					pEntity->Use( m_hActivator, this, USE_SET, value );
+				else if ( UPDATE_START == start )
 					pEntity->UpdateSelf( value );
 				else
 					pEntity->UpdateSelfReturn( value );
@@ -2006,7 +2080,7 @@ void CMomentaryRotButton::Return( void )
 {
 	float value = CBaseToggle::AxisDelta( pev->spawnflags, pev->angles, m_start ) / m_flMoveDistance;
 
-	UpdateAllButtons( value, 0 );	// This will end up calling UpdateSelfReturn() n times, but it still works right
+	UpdateAllButtons( value, UPDATE_END );	// This will end up calling UpdateSelfReturn() n times, but it still works right
 	if( value > 0.0f )
 		UpdateTarget( value );
 }
