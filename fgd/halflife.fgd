@@ -1451,6 +1451,21 @@
 	]
 	message(string) : "Add offset [LV]" : "0 0 0"
 ]
+
+@PointClass base(Targetname) color(170 221 85) size(-12 -12 -12, 12 12 12) = calc_random : "Random value generator"
+[
+	netname(string) : "LR Minimum" : "0" : "Min value for random number"
+	message(string) : "LR Maximum" : "1" : "Max value for random number"
+	noise(string) : "LP Minimum" : : "Min point for random position"
+	noise1(string) : "LP Maximum" : : "Max point for random position"
+	impulse(choices) : "LP value type" : 0 =
+	[
+		0 : "In bounding box"
+		1 : "Collinear between the two points"
+	]
+	noise2(string) : "LV range (0-1)" : "1" : "Random velocity variance from forward vector. 0.5 = front hemisphere; 1 = all directions."
+]
+
 @PointClass base(Targetname) color(170 221 85) size(-12 -12 -12, 12 12 12) = calc_ratio : "Ratio adjustment"
 [
 	target(string) : "Based on ratio [LR]" : "*locus"
@@ -3256,6 +3271,7 @@
 		1: "Remove On fire" : 0
 	]
 	master(string) : "Master"
+	netname(target_destination) : "Read value from entity [LR]" : : "Ignores New Value if set"
 	frags(integer) : "New Value" : 10
 ]
 
@@ -3969,6 +3985,7 @@
 	]
 	distance(integer) : "Distance (deg)" : 90
 	returnspeed(integer) : "Auto-return speed" : 0
+	initfraction(string) : "Initial position (0-1)"
 	spawnflags(flags) =
 	[
 		1: "Door Hack" : 0
