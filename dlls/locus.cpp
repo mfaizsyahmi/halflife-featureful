@@ -11,7 +11,6 @@
 #include "locus.h"
 #include "effects.h"
 #include "decals.h"
-// #include <tuple>
 
 bool IsLikelyNumber(const char* szText)
 {
@@ -1607,9 +1606,49 @@ public:
 	bool CalcRatio( CBaseEntity *pLocus, float *outResult );
 	bool CalcPosition( CBaseEntity *pLocus, Vector *outVector );
 	bool CalcVelocity( CBaseEntity* pLocus, Vector *outResult );
+	
+	void KeyValue( KeyValueData *pkvd );
+	virtual int		Save( CSave &save );
+	virtual int		Restore( CRestore &restore );
+	static	TYPEDESCRIPTION m_SaveData[];
+	
+//protected:
+	string_t m_lvMinAngle;
+	string_t m_lvMaxAngle;
+	string_t m_lvDist;
 };
 
 LINK_ENTITY_TO_CLASS( calc_random, CCalcRandom )
+
+TYPEDESCRIPTION	CCalcRandom::m_SaveData[] =
+{
+	DEFINE_FIELD( CCalcRandom, m_lvMinAngle, FIELD_STRING ),
+	DEFINE_FIELD( CCalcRandom, m_lvMaxAngle, FIELD_STRING ),
+	DEFINE_FIELD( CCalcRandom, m_lvDist, FIELD_STRING ),
+};
+
+IMPLEMENT_SAVERESTORE( CCalcRandom, CPointEntity )
+
+void CCalcRandom::KeyValue(KeyValueData *pkvd)
+{
+	if(FStrEq(pkvd->szKeyName, "lv_minangle"))
+	{
+		m_lvMinAngle = ALLOC_STRING(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if(FStrEq(pkvd->szKeyName, "lv_maxangle"))
+	{
+		m_lvMaxAngle = ALLOC_STRING(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if(FStrEq(pkvd->szKeyName, "lv_dist"))
+	{
+		m_lvDist = ALLOC_STRING(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else
+		CPointEntity::KeyValue(pkvd);
+}
 
 bool CCalcRandom :: CalcRatio( CBaseEntity *pLocus, float* outResult )
 {
@@ -1625,7 +1664,7 @@ bool CCalcRandom :: CalcRatio( CBaseEntity *pLocus, float* outResult )
 bool CCalcRandom :: CalcPosition( CBaseEntity *pLocus, Vector* outResult )
 {
 	Vector p1 = g_vecZero;
-	Vector p2 = g_vecZero;
+	Vector p2 = pev->origin;
 	Vector vecResult = g_vecZero;
 	Vector vecDelta;
 	Vector vecDir;
@@ -1667,24 +1706,38 @@ bool CCalcRandom :: CalcPosition( CBaseEntity *pLocus, Vector* outResult )
 }
 
 // based off of https://stackoverflow.com/a/5408843
+// also https://mathworld.wolfram.com/SpherePointPicking.html
 bool CCalcRandom :: CalcVelocity(CBaseEntity *pLocus, Vector* outResult) {
-	float fRatio = 1.0f, fCosTheta;
-	Vector vecAngles = g_vecZero; // = pev->angles;
+	float fMinAngle = 0.0f;
+	float fMaxAngle = 180.0f;
+	float fPhi;
+	float fTheta;
+	float fDist = 1.0f;
+	Vector vecResult = g_vecZero;
 	
-	TryCalcLocus_Ratio( pLocus, STRING(pev->noise2), fRatio);
-	// normalize and clamp to (0...1)
-	if (fRatio < 0.0f)
-		fRatio = -fRatio;
-	if (fRatio > 1.0f)
-		fRatio = 1.0f;
+	TryCalcLocus_Ratio( pLocus, STRING(m_lvMinAngle), fMinAngle);
+	TryCalcLocus_Ratio( pLocus, STRING(m_lvMaxAngle), fMaxAngle);
+	TryCalcLocus_Ratio( pLocus, STRING(m_lvDist), fDist);
 	
-	// theta == angle from pole (forward) == pitch == y
-	// phi == roll == x
-	vecAngles.x += RANDOM_FLOAT(0 , 2*M_PI);
-	fCosTheta = RANDOM_FLOAT(-fRatio, fRatio);
-	vecAngles.y += std::acos( fCosTheta );
+	// clamp and convert angles to radians
+	fMinAngle = (fMinAngle < 0) ? 0 : (fMinAngle > 180) ? M_PI : fMinAngle * M_PI / 180;
+	fMaxAngle = (fMaxAngle < 0) ? 0 : (fMaxAngle > 180) ? M_PI : fMaxAngle * M_PI / 180;
 	
-	UTIL_MakeVectors( vecAngles );
-	*outResult = (gpGlobals->v_forward);
+	if (fMinAngle > fMaxAngle)
+		std::swap(fMinAngle, fMaxAngle);
+	
+	// theta == angle from pole (forward i.e x)
+	// phi == rotation around x
+	fPhi = RANDOM_FLOAT( 0, 2*M_PI );
+	fTheta = std::acosf( RANDOM_FLOAT( -1, 1 ) );
+	
+	// adjust theta to lie within range of min and max angles
+	fTheta = (fTheta * (fMaxAngle - fMinAngle) / M_PI) + fMinAngle;
+	
+	vecResult.y = fDist * std::sin( fTheta ) * std::cos( fPhi );
+	vecResult.z = fDist * std::sin( fTheta ) * std::sin( fPhi );
+	vecResult.x = fDist * std::cos( fTheta ); // forward
+	
+	*outResult = vecResult;
 	return true;
 }

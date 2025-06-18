@@ -1454,16 +1454,18 @@
 
 @PointClass base(Targetname) color(170 221 85) size(-12 -12 -12, 12 12 12) = calc_random : "Random value generator"
 [
-	netname(string) : "LR Minimum" : "0" : "Min value for random number"
-	message(string) : "LR Maximum" : "1" : "Max value for random number"
-	noise(string) : "LP Minimum" : : "Min point for random position"
-	noise1(string) : "LP Maximum" : : "Max point for random position"
+	netname(string) : "LR Minimum (blank = 0) [LR]" : "0" : "Min value for random number"
+	message(string) : "LR Maximum (blank = 1) [LR]" : "1" : "Max value for random number"
+	noise(string)   : "LP Minimum (blank = map origin) [LP]" : : "Min point for random position"
+	noise1(string)  : "LP Maximum (blank = here) [LP]" :     : "Max point for random position"
 	impulse(choices) : "LP value type" : 0 =
 	[
 		0 : "In bounding box"
 		1 : "Collinear between the two points"
 	]
-	noise2(string) : "LV range (0-1)" : "1" : "Random velocity variance from forward vector. 0.5 = front hemisphere; 1 = all directions."
+	lv_minangle(string) : "LV Minimum Angle (0-180, blank = 0) [LR]" : "0" : "Starting angle for random LV"
+	lv_maxangle(string) : "LV Maximum Angle (0-180, blank = 180) [LR]" : "180" : "Ending angle for random LV"
+	lv_dist(string) : "LV Distance [LR]" : "1" : "Magnitude for LV"
 ]
 
 @PointClass base(Targetname) color(170 221 85) size(-12 -12 -12, 12 12 12) = calc_ratio : "Ratio adjustment"
