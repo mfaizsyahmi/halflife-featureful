@@ -1493,7 +1493,6 @@ void CItemClock::KeyValue(KeyValueData* pkvd)
 {
 	if (FStrEq(pkvd->szKeyName, "time"))
 	{
-		//m_fTimeAtStart = atof(pkvd->szValue);
 		m_fTimeAtStart = ParseTimeString(pkvd->szValue);
 		pkvd->fHandled = true;
 	}
@@ -1674,11 +1673,18 @@ void CItemClock::SetEntityAngle(const char* targetName, float fAngle)
 			pTarget->pev->angles.y = fmod(pTarget->pev->angles.y, 360);
 			pTarget->pev->angles.z = fmod(pTarget->pev->angles.z, 360);
 			
-			Vector fDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * fabs(fAngle);
-			// another fix preventing 59-to-00 going round the long way
-			if (fDest == pToggleTarget->m_vecAngle1)
-				fDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * 360.0f;
-			pToggleTarget->AngularMove(fDest, pToggleTarget->pev->speed);
+			Vector vecDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * fabs(fAngle);
+			// calculate direction of the movement compared to movedir
+			float dir = pToggleTarget->AxisValue( 
+				pTarget->pev->spawnflags, (vecDest - pTarget->pev->angles) 
+			) * pToggleTarget->AxisValue( 
+				pTarget->pev->spawnflags, pToggleTarget->pev->movedir 
+			);
+			// fix vecDest going the wrong way
+			if ( signbit( dir ) )
+				vecDest += pToggleTarget->pev->movedir * 360.0f;
+			
+			pToggleTarget->AngularMove(vecDest, pToggleTarget->pev->speed);
 		}
 	}
 }
