@@ -3822,11 +3822,18 @@
 		2 : "Digital"
 		3 : "Analog and digital"
 	]
+	
+	netname(target_destination) : "Analog display entity" : : "Name of entity displaying an analog clock model."
+	hourhandentity(target_destination) : "Analog brush entity (hours)" : : "Name of brush entity to rotate for the hour hand"
+	minutehandentity(target_destination) : "Analog brush entity (minutes)" : : "Name of brush entity to rotate for the minute hand"
+	secondhandentity(target_destination) : "Analog brush entity (seconds)" : : "Name of brush entity to rotate for the second hand"
+	
 	noise(target_destination) : "Digital display entity (hours)" : : "Name of entity with a model that is a display of hours value. First bodygroup of the model should have 24 values."
 	noise1(target_destination) : "Digital display entity (minutes)" : : "Name of entity with a model that is a display of minutes value. First bodygroup of the model should have 60 values."
 	noise2(target_destination) : "Digital display entity (seconds)" : : "Name of entity with a model that is a display of seconds value. First bodygroup of the model should have 60 values."
 	noise3(target_destination) : "Digital display entity (AM/PM)" : : "Name of entity with a model that is a display of AM/PM value. First bodygroup of the model should have AM,PM, and blank."
 	//bodygroupoffset(integer) : "Body group offset" :  : "Four byte integer value of target bodygroup for seconds/minutes/hours/ampm display entity"
+	
 	spawnflags(Flags) = 
 	[
 		8	: "Start ON" 			: 1

@@ -1436,10 +1436,13 @@ public:
 
 private:
 	float ParseTimeString(const char* str);
+	void SetEntityAngle(const char* targetName, float fAngle);
+	void SetAnalogDisplay(const char* targetName, float fAngleHours, float fAngleMinutes, float fAngleSeconds);
+	void SetDigitalDisplay(const char* targetName, int iBodyGroup, int iValue);
 	void UpdateClockFace(void);
-	void SetDisplayEntity(const char *szName, int iBodyGroupOffset, int iValue);
 	
-	int m_iBodyGroupOffset; // each byte defines bodygroup offset for second/minute/hour/ampm models
+	// each byte defines bodygroup offset for second/minute/hour/ampm models
+	int m_iBodyGroupOffset; 
 //	int m_iClockType;	// use pev->weapons
 	bool m_bActive;
 	float m_fTimeAtStart; // clock time when the clock starts (+ as input)
@@ -1447,6 +1450,10 @@ private:
 	float m_fNextClockUpdateTime; // next time clock face should be updated
 	float m_fTimeRate; // how fast the clock is going
 	float m_fThinkInterval; // how fast to update
+	// rotating brush entities that act as hour/minute/second hand
+	string_t m_HourBrushEnt;
+	string_t m_MinuteBrushEnt;
+	string_t m_SecondBrushEnt;
 };
 
 LINK_ENTITY_TO_CLASS( item_clock, CItemClock )
@@ -1461,6 +1468,9 @@ TYPEDESCRIPTION CItemClock::m_SaveData[] =
 	DEFINE_FIELD(CItemClock, m_fNextClockUpdateTime, FIELD_FLOAT),
 	DEFINE_FIELD(CItemClock, m_fTimeRate, FIELD_FLOAT),
 	DEFINE_FIELD(CItemClock, m_fThinkInterval, FIELD_FLOAT),
+	DEFINE_FIELD(CItemClock, m_HourBrushEnt  , FIELD_STRING),
+	DEFINE_FIELD(CItemClock, m_MinuteBrushEnt, FIELD_STRING),
+	DEFINE_FIELD(CItemClock, m_SecondBrushEnt, FIELD_STRING),
 };
 IMPLEMENT_SAVERESTORE( CItemClock, CItemGeneric )
 
@@ -1500,6 +1510,21 @@ void CItemClock::KeyValue(KeyValueData* pkvd)
 	else if (FStrEq(pkvd->szKeyName, "bodygroupoffset"))
 	{
 		m_iBodyGroupOffset = atoi(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "hourhandentity"))
+	{
+		m_HourBrushEnt = ALLOC_STRING(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "minutehandentity"))
+	{
+		m_MinuteBrushEnt = ALLOC_STRING(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "secondhandentity"))
+	{
+		m_SecondBrushEnt = ALLOC_STRING(pkvd->szValue);
 		pkvd->fHandled = true;
 	}
 	else 
@@ -1630,22 +1655,74 @@ void CItemClock::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 	}
 }
 
-void CItemClock::SetDisplayEntity(const char *szName, int iBodyGroup, int iValue)
+void CItemClock::SetEntityAngle(const char* targetName, float fAngle)
 {
-	if (!strlen(szName))
-		return;
-	CBaseEntity *pSubject = UTIL_FindEntityByTargetname(NULL, szName, this);
-	if (!pSubject)
+	CBaseEntity* pTarget = NULL;
+	for( ; ; )
 	{
-		ALERT(at_console, "%s \"%s\" failed to find target entity \"%s\"\n", STRING(pev->classname), STRING(pev->targetname), szName );
-		return;
+		pTarget = UTIL_FindEntityByTargetname(pTarget, targetName, this);
+		if( !pTarget )
+			break;
+		
+		CBaseToggle *pToggleTarget = pTarget->MyTogglePointer();
+		if ( STRING(pTarget->pev->classname) == "momentary_rot_button" )
+			pTarget->Use( this, this, USE_SET, fabs(fAngle/360) );
+		else if (pToggleTarget)
+		{
+			// force-normalize the angles to fix it going around the long way
+			pTarget->pev->angles.x = fmod(pTarget->pev->angles.x, 360);
+			pTarget->pev->angles.y = fmod(pTarget->pev->angles.y, 360);
+			pTarget->pev->angles.z = fmod(pTarget->pev->angles.z, 360);
+			
+			Vector fDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * fabs(fAngle);
+			// another fix preventing 59-to-00 going round the long way
+			if (fDest == pToggleTarget->m_vecAngle1)
+				fDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * 360.0f;
+			pToggleTarget->AngularMove(fDest, pToggleTarget->pev->speed);
+		}
 	}
-	
-	CBaseAnimating* pAnimatingSubject = pSubject->MyAnimatingPointer();
-	if (pAnimatingSubject)
-		pAnimatingSubject->SetBodygroup(iBodyGroup, iValue);
-	else
-		pSubject->pev->body = iValue;
+}
+
+void CItemClock::SetAnalogDisplay(const char* targetName, float fHourHandAngle, float fMinuteHandAngle, float fSecondHandAngle)
+{
+	CBaseEntity* pTarget = NULL;
+	for( ; ; )
+	{
+		pTarget = UTIL_FindEntityByTargetname(pTarget, targetName, this);
+		if( !pTarget )
+			break;
+		
+		CBaseAnimating* pAnimatingSubject = pTarget->MyAnimatingPointer();
+		if (pAnimatingSubject) 
+		{
+			pAnimatingSubject->SetBoneController( CLOCK_SECONDHAND_CONTROLLER, fSecondHandAngle );
+			pAnimatingSubject->SetBoneController( CLOCK_MINUTEHAND_CONTROLLER, fMinuteHandAngle );
+			pAnimatingSubject->SetBoneController( CLOCK_HOURHAND_CONTROLLER, fHourHandAngle );
+		}
+		else
+		{
+			pTarget->pev->controller[CLOCK_SECONDHAND_CONTROLLER] = (int)(fSecondHandAngle/360*255);
+			pTarget->pev->controller[CLOCK_MINUTEHAND_CONTROLLER] = (int)(fMinuteHandAngle/360*255);
+			pTarget->pev->controller[CLOCK_HOURHAND_CONTROLLER] = (int)(fHourHandAngle/360*255);
+		}
+	}
+}
+
+void CItemClock::SetDigitalDisplay(const char* targetName, int iBodyGroup, int iValue)
+{
+	CBaseEntity* pTarget = NULL;
+	for( ; ; )
+	{
+		pTarget = UTIL_FindEntityByTargetname(pTarget, targetName, this);
+		if( !pTarget )
+			break;
+		
+		CBaseAnimating* pAnimatingSubject = pTarget->MyAnimatingPointer();
+		if (pAnimatingSubject)
+			pAnimatingSubject->SetBodygroup(iBodyGroup, iValue);
+		else
+			pTarget->pev->body = iValue;
+	}
 }
 
 void CItemClock::UpdateClockFace(void) {
@@ -1656,6 +1733,7 @@ void CItemClock::UpdateClockFace(void) {
 	int iSecondsValue;
 	int iMinutesValue;
 	int iHoursValue;
+	CBaseEntity* pTarget = NULL;
 	
 	// calculate current time
 	CalcRatio(this, &fCurrentTime);
@@ -1675,9 +1753,12 @@ void CItemClock::UpdateClockFace(void) {
 			fHourHandAngle *= -1.0f;
 		
 		// set clock hand angles
-		SetBoneController( CLOCK_SECONDHAND_CONTROLLER, fSecondHandAngle );
-		SetBoneController( CLOCK_MINUTEHAND_CONTROLLER, fMinuteHandAngle );
-		SetBoneController( CLOCK_HOURHAND_CONTROLLER, fHourHandAngle );
+		SetAnalogDisplay( "*locus", fHourHandAngle, fMinuteHandAngle, fSecondHandAngle); // self
+		SetAnalogDisplay( STRING(pev->netname), fHourHandAngle, fMinuteHandAngle, fSecondHandAngle); // others
+		// brush entities
+		SetEntityAngle( STRING(m_HourBrushEnt), fHourHandAngle);
+		SetEntityAngle( STRING(m_MinuteBrushEnt), fMinuteHandAngle);
+		SetEntityAngle( STRING(m_SecondBrushEnt), fSecondHandAngle);
 	}
 	
 	if ( FBitSet(pev->weapons, CLOCK_TYPE_DIGITAL) )
@@ -1687,40 +1768,30 @@ void CItemClock::UpdateClockFace(void) {
 		iMinutesValue = (int)( fmod( floor(fCurrentTime / 60), 60) );
 		iHoursValue = (int)( floor(fCurrentTime / 3600) );
 		
-		// set display model's body[group] values
-		SetDisplayEntity( 
+		SetDigitalDisplay( 
 				STRING(pev->noise2), // seconds model
 				m_iBodyGroupOffset & 0xff, 
 				iSecondsValue 
 		);
-		SetDisplayEntity( 
+		SetDigitalDisplay( 
 				STRING(pev->noise1), // minutes model
 				(m_iBodyGroupOffset & 0xff00)>>8, 
 				iMinutesValue 
 		);
-		if (FBitSet(pev->spawnflags, SF_CLOCK_24HR))
-		{
-			SetDisplayEntity( 
-					STRING(pev->noise3), // am/pm model
-					(m_iBodyGroupOffset & 0xff000000)>>24, 
-					2 // third value should be blank
-			);
-		}
-		else
-		{
-			SetDisplayEntity( 
-					STRING(pev->noise3), // am/pm model
-					(m_iBodyGroupOffset & 0xff000000)>>24, 
-					(int)(iHoursValue/12)
-			);
-			iHoursValue %= 12;
-		}
-		SetDisplayEntity( 
+		SetDigitalDisplay( 
 				STRING(pev->noise), // hours model
 				(m_iBodyGroupOffset & 0xff0000)>>16, 
-				iHoursValue 
+				(!FBitSet(pev->spawnflags, SF_CLOCK_24HR))
+					? iHoursValue % 12
+					: iHoursValue
 		);
-		
+		SetDigitalDisplay( 
+				STRING(pev->noise3), // am/pm model
+				(m_iBodyGroupOffset & 0xff000000)>>24, 
+				(FBitSet(pev->spawnflags, SF_CLOCK_24HR))
+					? (int)(iHoursValue/12)
+					: 2 // third value should be blank
+		);
 	}
 	
 	// close to the integer mark
