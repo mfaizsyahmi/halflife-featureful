@@ -3811,6 +3811,32 @@
 	]
 ]
 
+@PointClass base(item_generic, Targetx) = item_clock : "Clock" 
+[
+	model(studio) : "Model" : "models/wallclock2.mdl"
+	time(string) : "Time at start" : "10:10:30" : "The clock time at the start of the map. Can be in HH:MM:SS, or seconds after midnight."
+	rate(string) : "Clock rate" : "1" : "How fast the clock runs. Can be negative."
+	clocktype(choices) : "Clock type" : 1 =
+	[
+		1 : "Analog"
+		2 : "Digital"
+		3 : "Analog and digital"
+	]
+	noise(target_destination) : "Digital display entity (hours)" : : "Name of entity with a model that is a display of hours value. First bodygroup of the model should have 24 values."
+	noise1(target_destination) : "Digital display entity (minutes)" : : "Name of entity with a model that is a display of minutes value. First bodygroup of the model should have 60 values."
+	noise2(target_destination) : "Digital display entity (seconds)" : : "Name of entity with a model that is a display of seconds value. First bodygroup of the model should have 60 values."
+	noise3(target_destination) : "Digital display entity (AM/PM)" : : "Name of entity with a model that is a display of AM/PM value. First bodygroup of the model should have AM,PM, and blank."
+	//bodygroupoffset(integer) : "Body group offset" :  : "Four byte integer value of target bodygroup for seconds/minutes/hours/ampm display entity"
+	spawnflags(Flags) = 
+	[
+		8	: "Start ON" 			: 1
+		16	: "Reverse hour hand"	: 0
+		32	: "Reverse minute hand"	: 0
+		64	: "Reverse second hand"	: 0
+		128	: "24 hour display"		: 0
+	]
+]
+
 @BaseClass base(Targetname, Angles) = ItemRecharger
 [
 	TriggerOnEmpty(target_destination) : "Trigger On Empty"

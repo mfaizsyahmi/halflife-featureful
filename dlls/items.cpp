@@ -1400,6 +1400,9 @@ TakeDamageResult CEyeScanner::TakeDamage(entvars_t *pevInflictor, entvars_t *pev
 // every 86400 seconds, a day passes
 #define CLOCK_MAX_SECONDS 86400
 
+#define CLOCK_TYPE_ANALOG	1
+#define CLOCK_TYPE_DIGITAL	2
+
 #define SF_CLOCK_START_ON			8
 // rotates counterclockwise if checked
 #define SF_CLOCK_REVERSE_HOURHAND	16
@@ -1413,14 +1416,8 @@ TakeDamageResult CEyeScanner::TakeDamage(entvars_t *pevInflictor, entvars_t *pev
 #define CLOCK_MINUTEHAND_CONTROLLER	1
 #define CLOCK_SECONDHAND_CONTROLLER	2
 
-// digital clock body group names
-#define CLOCK_BODYGROUP_SECOND_ONES	"second_ones"
-#define CLOCK_BODYGROUP_SECOND_TENS	"second_tens"
-#define CLOCK_BODYGROUP_MINUTE_ONES	"minute_ones"
-#define CLOCK_BODYGROUP_MINUTE_TENS	"minute_tens"
-#define CLOCK_BODYGROUP_HOUR_ONES	"hour_ones"
-#define CLOCK_BODYGROUP_HOUR_TENS	"hour_tens"
-#define CLOCK_BODYGROUP_AM_PM		"am_pm"
+// to display digital clock needs 3/4 separate entities (can include self)
+// where each entity's body is set to 0-60
 
 class CItemClock : public CItemGeneric
 {
@@ -1433,25 +1430,31 @@ public:
 	void Spawn(void);
 	void KeyValue(KeyValueData* pkvd);
 	void StartupThink(void);
-	void Think(void);
+	void SequenceThink(void);
 	bool CalcRatio(CBaseEntity *pLocus, float* outResult);
+	void Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value);
 
 private:
-	bool UpdateClockFace(void);
-	float ParseTimeString(string_t timeString);
+	float ParseTimeString(const char* str);
+	void UpdateClockFace(void);
+	void SetDisplayEntity(const char *szName, int iBodyGroupOffset, int iValue);
 	
+	int m_iBodyGroupOffset; // each byte defines bodygroup offset for second/minute/hour/ampm models
+//	int m_iClockType;	// use pev->weapons
 	bool m_bActive;
-	float m_fTimeAtStart; // as input
+	float m_fTimeAtStart; // clock time when the clock starts (+ as input)
 	float m_fStartTime; // global time when the clock starts
 	float m_fNextClockUpdateTime; // next time clock face should be updated
 	float m_fTimeRate; // how fast the clock is going
 	float m_fThinkInterval; // how fast to update
-}
+};
 
-LINK_ENTITY_TO_CLASS(item_clock, CItemClock)
+LINK_ENTITY_TO_CLASS( item_clock, CItemClock )
 
 TYPEDESCRIPTION CItemClock::m_SaveData[] =
 {
+	DEFINE_FIELD(CItemClock, m_iBodyGroupOffset, FIELD_INTEGER),
+	//DEFINE_FIELD(CItemClock, m_iClockType, FIELD_INTEGER),
 	DEFINE_FIELD(CItemClock, m_bActive, FIELD_BOOLEAN),
 	DEFINE_FIELD(CItemClock, m_fTimeAtStart, FIELD_FLOAT),
 	DEFINE_FIELD(CItemClock, m_fStartTime, FIELD_FLOAT),
@@ -1459,7 +1462,7 @@ TYPEDESCRIPTION CItemClock::m_SaveData[] =
 	DEFINE_FIELD(CItemClock, m_fTimeRate, FIELD_FLOAT),
 	DEFINE_FIELD(CItemClock, m_fThinkInterval, FIELD_FLOAT),
 };
-IMPLEMENT_SAVERESTORE(CItemClock, CItemGeneric)
+IMPLEMENT_SAVERESTORE( CItemClock, CItemGeneric )
 
 float CItemClock::ParseTimeString(const char* str)
 {
@@ -1489,51 +1492,64 @@ void CItemClock::KeyValue(KeyValueData* pkvd)
 		m_fTimeRate = atof(pkvd->szValue);
 		pkvd->fHandled = true;
 	}
+	else if (FStrEq(pkvd->szKeyName, "clocktype"))
+	{
+		pev->weapons = atoi(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
+	else if (FStrEq(pkvd->szKeyName, "bodygroupoffset"))
+	{
+		m_iBodyGroupOffset = atoi(pkvd->szValue);
+		pkvd->fHandled = true;
+	}
 	else 
 		CItemGeneric::KeyValue(pkvd);
 }
 
-void CItemClock::Spawn()
+void CItemClock::Spawn(void)
 {
 //	if ( !FBitSet(pev->spawnflags, SF_CLOCK_START_GLOBAL) )
 		m_fStartTime = gpGlobals->time;
 	
 	if (m_fTimeRate == 0)
 		m_fTimeRate = 1;
-	else if (m_fTimeRate > 10)
+	if (m_fTimeRate > 10)
 		m_fThinkInterval = (float)(1 / m_fTimeRate);
 	else
 		m_fThinkInterval = 0.1f;
 	
 	if ( FBitSet(pev->spawnflags, SF_CLOCK_START_ON) )
 		m_bActive = true;
-	
-	CItemGeneric::Spawn()
-	SetThink(&CItemClock::StartupThink);
-	pev->nextthink = gpGlobals->time + m_fThinkInterval;
+		
+	CItemGeneric::Spawn();
+	SetThink( &CItemClock::StartupThink );
+	pev->nextthink = gpGlobals->time + 1.0f;
+
+//	ALERT(at_console, "Spawned clock! Time at start: %f\n", 
+//		m_fTimeAtStart, pev->nextthink);
 }
 
 void CItemClock::StartupThink(void)
 {
-	CItemClock::UpdateClockFace();
+	UpdateClockFace();
 	
 	if (!FStringNull(m_iszSequenceName))
-		CItemClock::StartupThink();
+		CItemGeneric::StartupThink();
 	
 	if (m_bActive) 
 	{
-		SetThink(&CItemClock::Think);
+		SetThink( &CItemClock::SequenceThink );
 		pev->nextthink = gpGlobals->time + 0.01f;
 	}
 	else
 	{
-		SetThink(NULL);
+		SetThink( NULL );
 		pev->nextthink -= 1.0f;
 	}
 }
 
-void CItemClock::Think(void)
-{
+void CItemClock::SequenceThink(void)
+{	
 	pev->nextthink = gpGlobals->time + m_fThinkInterval;
 
 	// Advance frames and dispatch events.
@@ -1548,19 +1564,88 @@ void CItemClock::Think(void)
 	}
 	
 	// check if clock face needs updating
-	if (gpGlobals->time <= m_fNextClockUpdateTime)
+	if (gpGlobals->time >= m_fNextClockUpdateTime)
+	{
+		SUB_UseTargets( this, USE_TOGGLE, 1 );
 		CItemClock::UpdateClockFace();
+	}
 }
 
 bool CItemClock::CalcRatio(CBaseEntity *pLocus, float* outResult) { 
 	float fTimeElapsed;
 	float fCurrentTime;
-	
-	fTimeElapsed = gpGlobals->time - m_fStartTime;
-	fCurrentTime = (m_fTimeAtStart + (fTimeElapsed * m_fTimeRate)) % CLOCK_MAX_SECONDS;
+
+	if (m_bActive)
+	{
+		fTimeElapsed = gpGlobals->time - m_fStartTime;
+		fCurrentTime = fmod(m_fTimeAtStart + (fTimeElapsed * m_fTimeRate), CLOCK_MAX_SECONDS);
+		if (fCurrentTime < 0)
+			fCurrentTime = CLOCK_MAX_SECONDS + fCurrentTime;
+	}
+	else
+	{
+		fCurrentTime = m_fTimeAtStart;
+	}
+
+	//ALERT(at_console, "Time is: %f\n", fCurrentTime);
 	
 	*outResult = fCurrentTime; 
 	return true; 
+}
+
+void CItemClock::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value)
+{
+	float fCurrentTime;
+	// get it now before we change anything
+	CalcRatio(this, &fCurrentTime);
+	
+	// all use types reset m_fStartTime to global time
+	// and m_fTimeAtStart to time at moment of trigger
+	// then CalcRatio would know to not advance time if !m_bActive
+	m_fStartTime = gpGlobals->time;
+	if (useType == USE_SET)
+	{
+		m_fTimeAtStart = value;
+		m_fNextClockUpdateTime = gpGlobals->time;
+		return;
+	}
+	
+	m_fTimeAtStart = fCurrentTime;
+
+	if (ShouldToggle(useType, m_bActive))
+	{
+		m_bActive = !m_bActive;
+		if (m_bActive)
+		{
+			m_fNextClockUpdateTime = gpGlobals->time;
+			SetThink( &CItemClock::SequenceThink );
+			//if (pev->nextthink < gpGlobals->time)
+			pev->nextthink = gpGlobals->time + m_fThinkInterval;
+		}
+		else
+		{
+			SetThink( NULL );
+			pev->nextthink -= 1.0f;
+		}
+	}
+}
+
+void CItemClock::SetDisplayEntity(const char *szName, int iBodyGroup, int iValue)
+{
+	if (!strlen(szName))
+		return;
+	CBaseEntity *pSubject = UTIL_FindEntityByTargetname(NULL, szName, this);
+	if (!pSubject)
+	{
+		ALERT(at_console, "%s \"%s\" failed to find target entity \"%s\"\n", STRING(pev->classname), STRING(pev->targetname), szName );
+		return;
+	}
+	
+	CBaseAnimating* pAnimatingSubject = pSubject->MyAnimatingPointer();
+	if (pAnimatingSubject)
+		pAnimatingSubject->SetBodygroup(iBodyGroup, iValue);
+	else
+		pSubject->pev->body = iValue;
 }
 
 void CItemClock::UpdateClockFace(void) {
@@ -1573,54 +1658,76 @@ void CItemClock::UpdateClockFace(void) {
 	int iHoursValue;
 	
 	// calculate current time
-	CalcRatio(this, fCurrentTime);
-	
-	// calculate angles for analog clock hands
-	fSecondHandAngle = (float)( floor(fCurrentTime % 60) * 6);
-	fMinuteHandAngle = (float)( (fCurrentTime / 10) % 360 );
-	fHourHandAngle = (float)( (fCurrentTime / 120) % 360 );
-	// set direction (clockwise or counterclockwise)
-	if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_SECONDHAND) )
-		fSecondHandAngle *= -1.0f;
-	if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_MINUTEHAND) )
-		fMinuteHandAngle *= -1.0f;
-	if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_HOURHAND) )
-		fHourHandAngle *= -1.0f;
-	
-	// set clock hand angles
-	SetBoneController( CLOCK_SECONDHAND_CONTROLLER, fSecondHandAngle );
-	SetBoneController( CLOCK_MINUTEHAND_CONTROLLER, fMinuteHandAngle );
-	SetBoneController( CLOCK_HOURHAND_CONTROLLER, fHourHandAngle );
-	
-	// calculate hour minute and second values
-	iSecondsValue = (int)( fCurrentTime % 60 );
-	iMinutesValue = (int)( floor(fCurrentTime / 60) );
-	iHoursValue = (int)( floor(fCurrentTime / 3600) );
-	
-	// set digital clock body group values
-	SetBodygroup( CLOCK_BODYGROUP_SECOND_ONES, (iSecondsValue % 10) );
-	SetBodygroup( CLOCK_BODYGROUP_SECOND_TENS, (int)(iSecondsValue / 10) );
-	SetBodygroup( CLOCK_BODYGROUP_MINUTE_ONES, (int)(iMinutesValue % 10) );
-	SetBodygroup( CLOCK_BODYGROUP_MINUTE_TENS, (int)(iMinutesValue / 10) );
-	if (FBitSet(pev->spawnflags, SF_CLOCK_24HR))
-	{
-		SetBodygroup( CLOCK_BODYGROUP_HOUR_ONES, (int)(iHoursValue % 10) );
-		SetBodygroup( CLOCK_BODYGROUP_HOUR_TENS, (int)(iHoursValue / 10) );
-		SetBodygroup( CLOCK_BODYGROUP_AM_PM, 2 ); // third value should be blank
-	}
-	else
-	{
-		SetBodygroup( CLOCK_BODYGROUP_AM_PM, (int)(iHoursValue/12) );
-		iHoursValue %= 12;
-		SetBodygroup( CLOCK_BODYGROUP_HOUR_ONES, (int)(iHoursValue % 10) );
-		SetBodygroup( CLOCK_BODYGROUP_HOUR_TENS, (int)(iHoursValue / 10) );
+	CalcRatio(this, &fCurrentTime);
+
+	if ( FBitSet(pev->weapons, CLOCK_TYPE_ANALOG) )
+	{		
+		// calculate angles for analog clock hands
+		fSecondHandAngle = (float)( floor( fmod(fCurrentTime, 60) ) * 6);
+		fMinuteHandAngle = (float)( fmod(fCurrentTime / 10, 360) );
+		fHourHandAngle = (float)( fmod(fCurrentTime / 120, 360) );
+		// set direction (clockwise or counterclockwise)
+		if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_SECONDHAND) )
+			fSecondHandAngle *= -1.0f;
+		if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_MINUTEHAND) )
+			fMinuteHandAngle *= -1.0f;
+		if ( !FBitSet(pev->spawnflags, SF_CLOCK_REVERSE_HOURHAND) )
+			fHourHandAngle *= -1.0f;
+		
+		// set clock hand angles
+		SetBoneController( CLOCK_SECONDHAND_CONTROLLER, fSecondHandAngle );
+		SetBoneController( CLOCK_MINUTEHAND_CONTROLLER, fMinuteHandAngle );
+		SetBoneController( CLOCK_HOURHAND_CONTROLLER, fHourHandAngle );
 	}
 	
-	// calc future time (next integer time)
-	if ( fabs( roundf(fCurrentTime) ) < 0.2f ) // close to the integer mark
-		fCurrentTime = roundf(fCurrentTime + 1.0f);
-	else // considerably off the integer mark
-		fCurrentTime += fCurrentTime % 1;
+	if ( FBitSet(pev->weapons, CLOCK_TYPE_DIGITAL) )
+	{
+		// calculate hour minute and second values
+		iSecondsValue = (int)( fmod(fCurrentTime, 60) );
+		iMinutesValue = (int)( fmod( floor(fCurrentTime / 60), 60) );
+		iHoursValue = (int)( floor(fCurrentTime / 3600) );
+		
+		// set display model's body[group] values
+		SetDisplayEntity( 
+				STRING(pev->noise2), // seconds model
+				m_iBodyGroupOffset & 0xff, 
+				iSecondsValue 
+		);
+		SetDisplayEntity( 
+				STRING(pev->noise1), // minutes model
+				(m_iBodyGroupOffset & 0xff00)>>8, 
+				iMinutesValue 
+		);
+		if (FBitSet(pev->spawnflags, SF_CLOCK_24HR))
+		{
+			SetDisplayEntity( 
+					STRING(pev->noise3), // am/pm model
+					(m_iBodyGroupOffset & 0xff000000)>>24, 
+					2 // third value should be blank
+			);
+		}
+		else
+		{
+			SetDisplayEntity( 
+					STRING(pev->noise3), // am/pm model
+					(m_iBodyGroupOffset & 0xff000000)>>24, 
+					(int)(iHoursValue/12)
+			);
+			iHoursValue %= 12;
+		}
+		SetDisplayEntity( 
+				STRING(pev->noise), // hours model
+				(m_iBodyGroupOffset & 0xff0000)>>16, 
+				iHoursValue 
+		);
+		
+	}
 	
-	m_fNextClockUpdateTime = (fCurrentTime - m_fTimeAtStart) / m_fTimeRate;
+	// close to the integer mark
+	if ( fabs( fCurrentTime - roundf(fCurrentTime) ) < 0.2f ) 
+		m_fNextClockUpdateTime += ( 1 / fabs(m_fTimeRate) );
+	// quite off from the integer mark
+	else 
+		m_fNextClockUpdateTime += ( fmod(fCurrentTime,1) / fabs(m_fTimeRate) );
+	//ALERT(at_console, "Next tick: %f > %f\n", m_fNextClockUpdateTime, gpGlobals->time);
 }
