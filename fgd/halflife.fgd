@@ -225,7 +225,7 @@
 		4: "Solid"
 		5: "Additive"
 	]
-	renderamt(integer) : "FX Amount (1 - 255)"
+	renderamt(integer) : "FX Amount (0 - 255)"
 	rendercolor(color255) : "FX Color (R G B)" : "0 0 0"
 ]
 
@@ -1465,7 +1465,7 @@
 	]
 	lv_minangle(string) : "LV Minimum Angle (0-180, blank = 0) [LR]" : "0" : "Starting angle for random LV"
 	lv_maxangle(string) : "LV Maximum Angle (0-180, blank = 180) [LR]" : "180" : "Ending angle for random LV"
-	lv_dist(string) : "LV Distance [LR]" : "1" : "Magnitude for LV"
+	lv_dist(string) : "LV Distance (blank = 1) [LR]" : "1" : "Magnitude for LV"
 ]
 
 @PointClass base(Targetname) color(170 221 85) size(-12 -12 -12, 12 12 12) = calc_ratio : "Ratio adjustment"
@@ -1642,8 +1642,8 @@
 ]
 @PointClass base(Targetname, BeamStartEnd, RenderFxChoices) size(-16 -16 -16, 16 16 16) = env_beam : "Energy Beam Effect"
 [
-	renderamt(integer) : "Brightness (1 - 255)" : 100
-	rendercolor(color255) : "Beam Color (R G B)" : "0 0 0"
+	renderamt(integer) : "Brightness (0 - 255)" : 100
+	rendercolor(color255) : "Beam Color (R G B)" : "255 0 0"
 	Radius(integer) : "Radius" : 256
 	life(string) : "Life (seconds 0 = infinite)" : "1"
 	BoltWidth(integer) : "Width of beam (pixels*0.1 0-255)" : 20
@@ -1675,7 +1675,7 @@
 [
 	target(target_destination) : "Entity to trail [LE]"
 	netname(sprite) : "Sprite Name" : "sprites/smoke.spr"
-	renderamt(integer) : "Brightness (1 - 255)" : 255
+	renderamt(integer) : "Brightness (0 - 255)" : 255
 	rendercolor(color255) : "Color (R G B)" : "255 255 255"
 	armorvalue(integer) : "Width" : 5
 	health(string) : "Fade time (secs)" : "4.0"
@@ -1913,8 +1913,8 @@
 @PointClass base(Targetname, RenderFxChoices, Angles) size(-16 -16 -16, 16 16 16) = env_laser : "Laser Beam Effect"
 [
 	LaserTarget(target_destination) : "Target of Laser"
-	renderamt(integer) : "Brightness (1 - 255)" : 100
-	rendercolor(color255) : "Beam Color (R G B)" : "0 0 0"
+	renderamt(integer) : "Brightness (0 - 255)" : 100
+	rendercolor(color255) : "Beam Color (R G B)" : "255 0 0"
 	width(integer) : "Width of beam (pixels*0.1 0-255)" : 20
 	NoiseAmplitude(integer) : "Amount of noise (0-255)" : 0
 	texture(sprite) : "Sprite Name" : "sprites/laserbeam.spr"
@@ -3044,7 +3044,7 @@
 		512: "Large Radius" : 1
 	]
 	_minlight(integer) : "Minimum light level"
-	spawnorigin(string) : "X Y Z - Move here after lighting" : "0 0 0"
+	spawnorigin(string) : "X Y Z - Move here after lighting" // : "0 0 0"
 	dmg(integer) : "Damage inflicted when blocked" : 0
 ]
 
@@ -3066,7 +3066,7 @@
 
 @SolidClass base(BaseTank, ZHLT) = func_tanklaser : "Brush Laser Turret"
 [
-	laserentity(target_source) : "env_laser Entity"
+	laserentity(target_destination) : "env_laser Entity"
 ]
 
 @SolidClass base(BaseTank, ZHLT) = func_tankrocket : "Brush Rocket Turret" []
@@ -3888,7 +3888,7 @@
 	]
 ]
 
-@PointClass iconsprite("sprites/light.spr") base(Targetname, Target, Angles, ZHLT_point) flags(Light) = light_spot : "The light_spot entity allows you to create direct beams of light (like from a, err, spotlight)." : "http://twhl.info/wiki.php?id=147"
+@PointClass iconsprite("sprites/light.spr") base(Targetname, Target, Angles, ZHLT_point) flags(Light, Angle) = light_spot : "The light_spot entity allows you to create direct beams of light (like from a, err, spotlight)." : "http://twhl.info/wiki.php?id=147"
 [
 	_cone(integer) : "Inner (bright) angle" : 30 : "The angle of the cone formed around the directional axis. The area inside this cone will contain the brightest light."
 	_cone2(integer) : "Outer (fading) angle" : 45 : "As above, although the area inside this cone will fade increasingly towards the outer edges."
@@ -3921,7 +3921,7 @@
 	pattern(string) : "Custom Appearance" : : "Use a string of letters to provide a custom light style. The property allows you to enter a string of letters from a to z, representing brightness. If you entered 'abcdefghihgfedcba' then the light would go from bright to dim and back again and then repeat. Complicating things, to use this feature, you must name the light. However, if you then use a trigger to activate it, then it will behave as a normal light."
 ]
 
-@PointClass base(Targetname, Angles, ZHLT_point) iconsprite("sprites/light_environment.spr") flags(Light) = light_environment : "This entity makes a map's sky emit light. The only practical way of lighting outdoor maps." : "http://twhl.info/wiki.php?id=146"
+@PointClass base(Targetname, Angles, ZHLT_point) iconsprite("sprites/light_environment.spr") flags(Light, Angle) = light_environment : "This entity makes a map's sky emit light. The only practical way of lighting outdoor maps." : "http://twhl.info/wiki.php?id=146"
 [
 	pitch(integer) : "Pitch" : 0 : "A negative number will give downward pitch (which is normally what you want)."
 	_light(color255) : "Brightness" : "255 255 128 200" : "First three integer numbers are the color (RGB). The fourth number is the brightness."
@@ -3939,7 +3939,7 @@
 		3: "Position & Direction [LP LV]"
 	]
 	m_iszSprite(sprite) : "Sprite Name" : "sprites/laserbeam.spr"
-	renderamt(integer) : "Brightness (1 - 255)" : 255
+	renderamt(integer) : "Brightness (0 - 255)" : 255
 	rendercolor(color255) : "Color (R G B)" : "255 255 255"
 	m_iWidth(integer) : "Width" : 10
 	m_iDistortion(integer) : "Distortion ('noise')" : 0
@@ -7819,11 +7819,11 @@
 		4: "Solid"
 		5: "Additive"
 	]
-	renderamt(integer) : "FX Amount (1 - 255)" : "190"
+	renderamt(integer) : "FX Amount (0 - 255)" : "190"
 	rendercolor(color255) : "FX Color (R G B)" : "255 255 255"
 ]
 
-@PointClass base(Targetname, Angles) flags(Path) size(16 16 16) color(247 181 82) = path_corner : "Moving platform stop"
+@PointClass base(Targetname, Angles) flags(Path, Angle) size(16 16 16) color(247 181 82) = path_corner : "Moving platform stop"
 [
 	spawnflags(Flags) =
 	[
