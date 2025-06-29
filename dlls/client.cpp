@@ -43,6 +43,7 @@
 #include "game.h"
 #include "common_soundscripts.h"
 #include "tex_materials.h"
+#include "triggers.h"
 
 extern DLL_GLOBAL unsigned int		g_ulModelIndexPlayer;
 extern DLL_GLOBAL bool		g_fGameOver;
@@ -566,6 +567,22 @@ void ClientCommand( edict_t *pEntity )
 	else if( FStrEq( pcmd, "fullupdate" ) )
 	{
 		pPlayer->ForceClientDllUpdate();
+	}
+	else if( FStrEq( pcmd, "player_input" ) )
+	{
+		CBaseEntity* pTarget = NULL;
+		for( ; ; )
+		{
+			pTarget = UTIL_FindEntityByClassname(pTarget, "trigger_playerinput");
+			if( !pTarget )
+				break;
+			
+			CTriggerPlayerInput* pInputTarget = dynamic_cast<CTriggerPlayerInput*>(pTarget);
+			if (pInputTarget)
+			{
+				pInputTarget->Input(pPlayer, CMD_ARGV( 1 ) );
+			}
+		}
 	}
 	else if( FStrEq(pcmd, "give" ) )
 	{

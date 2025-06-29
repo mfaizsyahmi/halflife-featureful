@@ -44,6 +44,7 @@
 #define FEATURE_TRIGGER_MOTION 1
 #define FEATURE_TRIGGER_HURT_REMOTE 1
 #define FEATURE_TRIGGER_ENTITY_ITERATOR 1
+#define FEATURE_TRIGGER_PLAYERINPUT 1
 
 #define SF_TRIGGER_PUSH_ONCE		1
 #define SF_TRIGGER_PUSH_START_OFF	2//spawnflag that makes trigger_push spawn turned OFF
@@ -7714,3 +7715,174 @@ void CTriggerSkillTest::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_T
 		}
 	}
 }
+
+#if FEATURE_TRIGGER_PLAYERINPUT
+//=====================================================
+// trigger_playerinput: triggers and receives text input
+// NOTE: introduces new console command `player_input`, 
+// which is parsed in client.cpp:ClientCommand
+//=====================================================
+#define PLAYERINPUT_SET_STR -1
+#define PLAYERINPUT_SET_FLOAT -2
+#define PLAYERINPUT_SET_INT -3
+#define PLAYERINPUT_COMPARE_STR 0
+#define PLAYERINPUT_COMPARE_STR_INSENSITIVE 1
+#define PLAYERINPUT_COMPARE_FLOAT 2
+#define PLAYERINPUT_COMPARE_INT 3
+
+class CTriggerPlayerInput : public CBaseToggle
+{
+public:
+	void Spawn( void );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+	virtual int	ObjectCaps( void ) { return CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
+	void Input( CBaseEntity *pActivator, const char *pValue );
+	bool CalcRatio( CBaseEntity *pLocus, float *outResult );
+	void UnsetThink( void );
+	void TimeoutThink( void );
+};
+LINK_ENTITY_TO_CLASS( trigger_playerinput, CTriggerPlayerInput )
+
+void CTriggerPlayerInput::Spawn()
+{
+	if (m_flWait == 0)
+		m_flWait = 10;
+}
+
+void CTriggerPlayerInput::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if (!pActivator->IsPlayer())
+		return;
+	else if (m_hActivator) // currently waiting for input
+		return;
+	
+	// mark the activator
+	m_hActivator = pActivator;
+	
+	if (useType == USE_SET)
+	{
+		pev->oldbuttons = pev->impulse;
+		switch ((int)(value))
+		{
+		case PLAYERINPUT_SET_INT:	
+			pev->impulse = PLAYERINPUT_SET_INT; 
+			break;
+		case PLAYERINPUT_SET_FLOAT: 
+			pev->impulse = PLAYERINPUT_SET_FLOAT; 
+			break;
+		case PLAYERINPUT_SET_STR:
+		default: 
+			pev->impulse = PLAYERINPUT_SET_STR; 
+		}
+	}
+	
+	CLIENT_COMMAND( pActivator->edict(), "messagemode player_input\n" );
+	
+	SetThink( &CTriggerPlayerInput::TimeoutThink );
+	pev->nextthink = gpGlobals->time + m_flWait;
+}
+
+void CTriggerPlayerInput::Input( CBaseEntity *pActivator, const char *pValue )
+{
+	//ALERT(at_console, "Activator is User? %i\n", (pActivator->edict() == pev->enemy));
+	if (pActivator != m_hActivator)
+	{
+		ALERT(at_console, "%s::%s not expecting input by this activator! aborted.\n", STRING(pev->classname), STRING(pev->targetname) );
+		return;
+	}
+	
+	//ALERT(at_console, "%s == %s -> %i\n", pValue, STRING(pev->message), stricmp( pValue, STRING(pev->message)));
+	bool bCheckResult = false;
+	int iResult = 1;
+	switch (pev->impulse) 
+	{
+	// responding to earlier Use with USE_SET
+	case PLAYERINPUT_SET_STR:
+		pev->message = ALLOC_STRING( pValue ); 
+		pev->impulse = pev->oldbuttons;
+		ALERT(at_console, "%s::%s value set to \"%s\"", STRING(pev->classname), STRING(pev->targetname), STRING(pev->message) );
+		break;
+	case PLAYERINPUT_SET_INT:
+		pev->frags = (float)(atoi( pValue ));
+		pev->impulse = pev->oldbuttons;
+		ALERT(at_console, "%s::%s value set to \"%i\"", STRING(pev->classname), STRING(pev->targetname), (int)(pev->frags) );
+		break;
+	case PLAYERINPUT_SET_FLOAT:
+		pev->frags = atof( pValue );
+		pev->impulse = pev->oldbuttons;
+		ALERT(at_console, "%s::%s value set to \"%f\"", STRING(pev->classname), STRING(pev->targetname), pev->frags );
+		break;
+		
+	case PLAYERINPUT_COMPARE_STR:
+		iResult = strcmp( pValue, STRING(pev->message) );
+		bCheckResult = true;
+		break;
+	case PLAYERINPUT_COMPARE_STR_INSENSITIVE:
+		iResult = stricmp( pValue, STRING(pev->message) );
+		bCheckResult = true;
+		break;
+	
+	// comparing numbers:
+	// 1. temporarily set a locus ratio value [frags]
+	// 2. call a comparator entity (trigger_compare) [noise1]
+	// 3. reset the locus ratio value after 0.1s
+	case PLAYERINPUT_COMPARE_INT:
+		pev->frags = (float)(atoi( pValue ));
+		break;
+	case PLAYERINPUT_COMPARE_FLOAT:
+		pev->frags = atof( pValue );
+		break;
+	}
+	
+	if (bCheckResult)
+	{
+		if ( iResult == 0 )
+			// fire if equal
+			SUB_UseTargets(pActivator, USE_TOGGLE);
+		else
+			// fire if not equal
+			FireTargets( STRING( pev->netname ), pActivator, this);
+	}
+	// always fire
+	FireTargets( STRING(pev->noise), pActivator, this);
+	
+	m_hActivator = NULL;
+	if (pev->impulse == PLAYERINPUT_COMPARE_INT || pev->impulse == PLAYERINPUT_COMPARE_FLOAT)
+	{
+		// fire comparator entity (trigger_compare)
+		FireTargets( STRING(pev->noise1), pActivator, this);
+		SetThink( &CTriggerPlayerInput::UnsetThink);
+		pev->nextthink = gpGlobals->time + 0.1f;
+	}
+	else
+	{
+		// reset timeout
+		SetThink( NULL );
+		pev->nextthink = -1.0f;
+	}
+}
+
+bool CTriggerPlayerInput::CalcRatio(CBaseEntity *pLocus, float *outResult) {
+	if ( pev->impulse == PLAYERINPUT_COMPARE_INT || pev->impulse == PLAYERINPUT_COMPARE_FLOAT ) 
+	{
+		*outResult = pev->frags;
+		return true;
+	}
+	return false;
+}
+
+void CTriggerPlayerInput::UnsetThink( void ) 
+{
+	pev->frags = 0;
+	SetThink( NULL );
+	pev->nextthink = -1.0f;
+}
+
+void CTriggerPlayerInput::TimeoutThink( void ) 
+{
+	ALERT(at_console, "%s::%s timed out.\n", STRING(pev->classname), STRING(pev->targetname) );
+	m_hActivator = NULL;
+	SetThink( NULL );
+	pev->nextthink = -1.0f;
+}
+#endif

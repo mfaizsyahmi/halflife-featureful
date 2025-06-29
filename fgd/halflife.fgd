@@ -9015,6 +9015,24 @@
 		2 : "Copy input"
 	]
 ]
+@PointClass base(Targetname) = trigger_playerinput : "Trigger Player Input"
+[
+	wait(string) : "Input timeout (seconds)"
+	impulse(choices) : "Comparison type" =
+	[
+		0 : "String (case sensitive)"
+		1 : "String (case insensitive)"
+		2 : "Number"
+		3 : "Integer"
+	]
+	message(string) : "String to compare"
+	noise1(target_destination) : "trigger_compare entity (for numbers)"
+	target(target_destination) : "Fire on success"
+	delay(string) : "Delay before firing"
+	killtarget(target_destination) : "Kill target on success"
+	netname(target_destination) : "Fire on fail"
+	noise(target_destination) : "Fire always"
+]
 
 @SolidClass base(Trigger, Angles) = trigger_push : "Trigger player push"
 [
