@@ -1664,7 +1664,7 @@ void CItemClock::SetEntityAngle(const char* targetName, float fAngle)
 			break;
 		
 		CBaseToggle *pToggleTarget = pTarget->MyTogglePointer();
-		if ( STRING(pTarget->pev->classname) == "momentary_rot_button" )
+		if ( FClassnameIs(pTarget->pev, "momentary_rot_button") )
 			pTarget->Use( this, this, USE_SET, fabs(fAngle/360) );
 		else if (pToggleTarget)
 		{
@@ -1674,16 +1674,14 @@ void CItemClock::SetEntityAngle(const char* targetName, float fAngle)
 			pTarget->pev->angles.z = fmod(pTarget->pev->angles.z, 360);
 			
 			Vector vecDest = pToggleTarget->m_vecAngle1 + pToggleTarget->pev->movedir * fabs(fAngle);
-			// calculate direction of the movement compared to movedir
-			float dir = pToggleTarget->AxisValue( 
-				pTarget->pev->spawnflags, (vecDest - pTarget->pev->angles) 
-			) * pToggleTarget->AxisValue( 
-				pTarget->pev->spawnflags, pToggleTarget->pev->movedir 
+			float fDelta = pToggleTarget->AxisValue( 
+				pTarget->pev->spawnflags, (vecDest - pTarget->pev->angles)
 			);
 			// fix vecDest going the wrong way
-			if ( signbit( dir ) )
-				vecDest += pToggleTarget->pev->movedir * 360.0f;
-			
+			if ( fabs(fDelta) > 350)
+				vecDest += pToggleTarget->pev->movedir * 360.0f 
+					* ( signbit(fDelta) ? -1 : 1 );
+
 			pToggleTarget->AngularMove(vecDest, pToggleTarget->pev->speed);
 		}
 	}
@@ -1739,7 +1737,6 @@ void CItemClock::UpdateClockFace(void) {
 	int iSecondsValue;
 	int iMinutesValue;
 	int iHoursValue;
-	CBaseEntity* pTarget = NULL;
 	
 	// calculate current time
 	CalcRatio(this, &fCurrentTime);
