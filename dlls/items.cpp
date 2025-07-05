@@ -1409,7 +1409,7 @@ TakeDamageResult CEyeScanner::TakeDamage(entvars_t *pevInflictor, entvars_t *pev
 #define SF_CLOCK_REVERSE_MINUTEHAND	32
 #define SF_CLOCK_REVERSE_SECONDHAND	64
 #define SF_CLOCK_24HR				128
-//#define SF_CLOCK_START_GLOBAL		256
+#define SF_CLOCK_START_GLOBAL		256
 
 // analog clock hand controllers
 #define CLOCK_HOURHAND_CONTROLLER	0
@@ -1590,8 +1590,8 @@ void CItemClock::SequenceThink(void)
 	// check if clock face needs updating
 	if (gpGlobals->time >= m_fNextClockUpdateTime)
 	{
-		SUB_UseTargets( this, USE_TOGGLE, 1 );
 		CItemClock::UpdateClockFace();
+		SUB_UseTargets( this, USE_TOGGLE, 1 );
 	}
 }
 
@@ -1604,7 +1604,7 @@ bool CItemClock::CalcRatio(CBaseEntity *pLocus, float* outResult) {
 		fTimeElapsed = gpGlobals->time - m_fStartTime;
 		fCurrentTime = fmod(m_fTimeAtStart + (fTimeElapsed * m_fTimeRate), CLOCK_MAX_SECONDS);
 		if (fCurrentTime < 0)
-			fCurrentTime = CLOCK_MAX_SECONDS + fCurrentTime;
+			fCurrentTime += CLOCK_MAX_SECONDS;
 	}
 	else
 	{
@@ -1643,7 +1643,6 @@ void CItemClock::Use(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE use
 		{
 			m_fNextClockUpdateTime = gpGlobals->time;
 			SetThink( &CItemClock::SequenceThink );
-			//if (pev->nextthink < gpGlobals->time)
 			pev->nextthink = gpGlobals->time + m_fThinkInterval;
 		}
 		else
