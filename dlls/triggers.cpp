@@ -2871,6 +2871,7 @@ void CTriggerPush::Touch( CBaseEntity *pOther )
 #define SF_TELEPORT_RELATIVE_TELEPORT 128
 #define SF_TELEPORT_KEEPANGLES 256
 #define SF_TELEPORT_KEEPVELOCITY 512
+#define SF_TELEPORT_USEONLY 4096
 
 // info_teleport_destination flags
 #define SF_TELEPORT_DESTINATION_TRIGGER_ON_ARRIVAL 32
@@ -2907,7 +2908,16 @@ IMPLEMENT_SAVERESTORE(CTriggerTeleport, CBaseTrigger)
 void CTriggerTeleport::Spawn( void )
 {
 	InitTrigger();
-	SetTouch( &CTriggerTeleport::TeleportTouch );
+	if (FBitSet(pev->spawnflags, SF_TELEPORT_USEONLY))
+	{
+		m_fInactive = true;
+		SetTouch( NULL );
+	}
+	else
+	{
+		SetTouch( &CTriggerTeleport::TeleportTouch );
+	}
+	
 	if (m_fInactive)
 	{
 		SetUse( &CTriggerTeleport::TeleportUse );
@@ -2931,7 +2941,13 @@ void CTriggerTeleport::KeyValue( KeyValueData *pkvd )
 
 void CTriggerTeleport::TeleportUse(CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value)
 {
-	if (ShouldToggle(useType, !m_fInactive))
+	if ( FBitSet(pev->spawnflags, SF_TELEPORT_USEONLY) )
+	{
+		CBasePlayer* pPlayer = g_pGameRules->EffectivePlayer(pActivator);
+		if( pPlayer )
+			TeleportTouch( pPlayer );
+	}
+	else if (ShouldToggle(useType, !m_fInactive))
 	{
 		m_fInactive = !m_fInactive;
 	}
@@ -2946,7 +2962,7 @@ bool CTriggerTeleport::TeleportToDestination( CBaseEntity *pOther )
 	if( !FBitSet( pevToucher->flags, FL_CLIENT | FL_MONSTER ) )
 		return false;
 
-	if (m_fInactive)
+	if ( !FBitSet(pev->spawnflags, SF_TELEPORT_USEONLY) && m_fInactive )
 		return false;
 
 	if( !UTIL_IsMasterTriggered( m_sMaster, pOther ) )
